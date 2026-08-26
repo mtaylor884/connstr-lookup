@@ -1,0 +1,10 @@
+[package]
+name = "connstr"
+version = "0.1.0"
+edition = "2021"
+description = "Query a single field out of a connection string, with precise error locations."
+license = "MIT"
+
+[[bin]]
+name = "connstr"
+path = "src/main.rs"
