@@ -33,6 +33,12 @@ fn run(args: &[String]) -> Result<(), String> {
                 .ok_or_else(|| "usage: connstr keys <FILE|->".to_string())?;
             cmd_keys(source)
         }
+        Some("validate") => {
+            let source = args
+                .get(1)
+                .ok_or_else(|| "usage: connstr validate <FILE|->".to_string())?;
+            cmd_validate(source)
+        }
         Some("--help") | Some("-h") | None => {
             print_usage();
             Ok(())
@@ -48,6 +54,7 @@ fn print_usage() {
          usage:\n\
          \x20\x20connstr get <FILE|-> <KEY>   print the value of KEY (case-insensitive)\n\
          \x20\x20connstr keys <FILE|->        list every key found, in order\n\
+         \x20\x20connstr validate <FILE|->    report every parse error found, not just the first\n\
          \n\
          FILE may be '-' to read the connection string from stdin."
     );
@@ -96,4 +103,22 @@ fn cmd_keys(source: &str) -> Result<(), String> {
         println!("{}", pair.key);
     }
     Ok(())
+}
+
+fn cmd_validate(source: &str) -> Result<(), String> {
+    let input = read_source(source)?;
+    let errors = parser::validate(&input);
+    if errors.is_empty() {
+        println!("{}: ok", source);
+        return Ok(());
+    }
+
+    for error in &errors {
+        eprintln!("{}: {}", source, error);
+    }
+    Err(format!(
+        "{} error{} found",
+        errors.len(),
+        if errors.len() == 1 { "" } else { "s" }
+    ))
 }

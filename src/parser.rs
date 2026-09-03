@@ -161,87 +161,131 @@ fn parse_unquoted_value(sc: &mut Scanner) -> String {
     value.trim_end().to_string()
 }
 
-pub fn parse(input: &str) -> Result<Vec<Pair>, ParseError> {
-    let mut sc = Scanner::new(input);
-    let mut pairs = Vec::new();
-
+// Parses one key=value entry (skipping any leading stray ';' separators),
+// leaving the scanner positioned after the entry's trailing ';' on success.
+// Returns Ok(None) once the input is exhausted.
+fn parse_entry(sc: &mut Scanner) -> Result<Option<Pair>, ParseError> {
     loop {
-        skip_whitespace(&mut sc);
+        skip_whitespace(sc);
         if sc.at_end() {
-            break;
+            return Ok(None);
         }
         if sc.peek() == Some(';') {
             // empty entry, e.g. a stray leading or doubled ';'
             sc.advance();
             continue;
         }
+        break;
+    }
 
-        let key_start = sc.position();
-        let mut key = String::new();
-        while let Some(c) = sc.peek() {
-            if c == '=' || c == ';' {
-                break;
+    let key_start = sc.position();
+    let mut key = String::new();
+    while let Some(c) = sc.peek() {
+        if c == '=' || c == ';' {
+            break;
+        }
+        key.push(c);
+        sc.advance();
+    }
+    let key = key.trim_end().to_string();
+
+    match sc.peek() {
+        None => {
+            if key.is_empty() {
+                return Ok(None);
             }
-            key.push(c);
+            return Err(ParseError::MissingEquals {
+                key,
+                position: key_start,
+            });
+        }
+        Some(';') => {
+            if key.is_empty() {
+                return Err(ParseError::EmptyKey(key_start));
+            }
+            return Err(ParseError::MissingEquals {
+                key,
+                position: key_start,
+            });
+        }
+        Some('=') => {
+            if key.is_empty() {
+                return Err(ParseError::EmptyKey(key_start));
+            }
             sc.advance();
         }
-        let key = key.trim_end().to_string();
+        _ => unreachable!("loop above only stops on '=', ';', or end of input"),
+    }
 
-        match sc.peek() {
-            None => {
-                if key.is_empty() {
+    skip_whitespace(sc);
+
+    let value = match sc.peek() {
+        Some('\'') | Some('"') => parse_quoted_value(sc)?,
+        _ => parse_unquoted_value(sc),
+    };
+
+    let pair = Pair {
+        key,
+        value,
+        position: key_start,
+    };
+
+    skip_whitespace(sc);
+    match sc.peek() {
+        None => Ok(Some(pair)),
+        Some(';') => {
+            sc.advance();
+            Ok(Some(pair))
+        }
+        Some(c) => Err(ParseError::TrailingCharacters {
+            found: c,
+            position: sc.position(),
+        }),
+    }
+}
+
+// Advances past the rest of the current entry so validate() can keep
+// scanning after an error. This is a best-effort resync point: it does
+// not understand quoting, so an unterminated quote containing a ';'
+// will make the next reported error start in a slightly odd place.
+fn recover_to_next_entry(sc: &mut Scanner) {
+    while let Some(c) = sc.advance() {
+        if c == ';' {
+            return;
+        }
+    }
+}
+
+pub fn parse(input: &str) -> Result<Vec<Pair>, ParseError> {
+    let mut sc = Scanner::new(input);
+    let mut pairs = Vec::new();
+
+    while let Some(pair) = parse_entry(&mut sc)? {
+        pairs.push(pair);
+    }
+
+    Ok(pairs)
+}
+
+// Like parse(), but keeps going after an error instead of stopping at the
+// first one, so a caller can report every problem in a string at once.
+pub fn validate(input: &str) -> Vec<ParseError> {
+    let mut sc = Scanner::new(input);
+    let mut errors = Vec::new();
+
+    loop {
+        match parse_entry(&mut sc) {
+            Ok(Some(_)) => continue,
+            Ok(None) => break,
+            Err(e) => {
+                errors.push(e);
+                if sc.at_end() {
                     break;
                 }
-                return Err(ParseError::MissingEquals {
-                    key,
-                    position: key_start,
-                });
-            }
-            Some(';') => {
-                if key.is_empty() {
-                    return Err(ParseError::EmptyKey(key_start));
-                }
-                return Err(ParseError::MissingEquals {
-                    key,
-                    position: key_start,
-                });
-            }
-            Some('=') => {
-                if key.is_empty() {
-                    return Err(ParseError::EmptyKey(key_start));
-                }
-                sc.advance();
-            }
-            _ => unreachable!("loop above only stops on '=', ';', or end of input"),
-        }
-
-        skip_whitespace(&mut sc);
-
-        let value = match sc.peek() {
-            Some('\'') | Some('"') => parse_quoted_value(&mut sc)?,
-            _ => parse_unquoted_value(&mut sc),
-        };
-
-        pairs.push(Pair {
-            key,
-            value,
-            position: key_start,
-        });
-
-        skip_whitespace(&mut sc);
-        match sc.peek() {
-            None => break,
-            Some(';') => {
-                sc.advance();
-            }
-            Some(c) => {
-                return Err(ParseError::TrailingCharacters {
-                    found: c,
-                    position: sc.position(),
-                });
+                recover_to_next_entry(&mut sc);
             }
         }
     }
 
-    Ok(pairs)
+    errors
 }

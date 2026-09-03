@@ -51,6 +51,19 @@ Key lookup is case-insensitive, matching how these connection strings
 are actually interpreted (`connstr get - server` and
 `connstr get - Server` return the same thing).
 
+Check a string for problems without caring about any particular key:
+
+```
+$ echo "Server=.;Database=app;=oops;Timeout" | connstr validate -
+-: line 1, column 23: empty key before '='
+-: line 1, column 29: entry 'Timeout' has no '=' before the next ';'
+error: 2 errors found
+```
+
+Unlike `get` and `keys`, which stop at the first problem they hit,
+`validate` keeps scanning after an error so it can report everything
+wrong with the string in one pass.
+
 `FILE` can be a real file path instead of `-`, which is the more
 common case: connection strings usually live in a config file rather
 than getting typed on a command line.
