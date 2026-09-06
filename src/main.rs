@@ -1,3 +1,4 @@
+mod aliases;
 mod parser;
 
 use std::env;
@@ -52,7 +53,7 @@ fn print_usage() {
         "connstr - query one field out of a connection string\n\
          \n\
          usage:\n\
-         \x20\x20connstr get <FILE|-> <KEY>   print the value of KEY (case-insensitive)\n\
+         \x20\x20connstr get <FILE|-> <KEY>   print the value of KEY (case-insensitive, aliases like Server/Data Source match)\n\
          \x20\x20connstr keys <FILE|->        list every key found, in order\n\
          \x20\x20connstr validate <FILE|->    report every parse error found, not just the first\n\
          \n\
@@ -76,7 +77,8 @@ fn cmd_get(source: &str, key: &str) -> Result<(), String> {
     let input = read_source(source)?;
     let pairs = parser::parse(&input).map_err(|e| format!("{}: {}", source, e))?;
 
-    match pairs.iter().find(|p| p.key.eq_ignore_ascii_case(key)) {
+    let target = aliases::canonical(key);
+    match pairs.iter().find(|p| aliases::canonical(&p.key) == target) {
         Some(pair) => {
             println!("{}", pair.value);
             Ok(())

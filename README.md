@@ -51,6 +51,22 @@ Key lookup is case-insensitive, matching how these connection strings
 are actually interpreted (`connstr get - server` and
 `connstr get - Server` return the same thing).
 
+`get` also knows about the common synonym groups these strings use in
+practice, so it doesn't matter which spelling a particular driver
+picked:
+
+```
+$ echo "Data Source=.;Uid=sa;Pwd=hunter2" | connstr get - Server
+.
+$ echo "Data Source=.;Uid=sa;Pwd=hunter2" | connstr get - "User Id"
+sa
+```
+
+The groups covered are Server/Address/Addr/Network Address/Data
+Source, Database/Initial Catalog, User Id/Uid/User/Username/User
+Name, and Password/Pwd. `keys` still lists whichever spelling
+actually appears in the string, unchanged.
+
 Check a string for problems without caring about any particular key:
 
 ```
@@ -84,10 +100,8 @@ error: -: line 1, column 32: value starting here is opened with ' but never clos
 
 This covers the common shape of these strings, not the entire .NET
 `DbConnectionStringBuilder` grammar. In particular it does not yet
-handle doubled `=` as an escape inside an unquoted key, and it treats
-every key literally rather than recognizing synonyms like `Server`
-and `Data Source` as the same setting. See the issue tracker for
-what's planned next.
+handle doubled `=` as an escape inside an unquoted key. See the issue
+tracker for what's planned next.
 
 ## License
 
