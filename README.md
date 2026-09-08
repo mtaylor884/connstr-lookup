@@ -84,6 +84,28 @@ wrong with the string in one pass.
 common case: connection strings usually live in a config file rather
 than getting typed on a command line.
 
+## Scripting with --format json
+
+Every command accepts `--format json` (in place anywhere on the
+command line) for output a script can parse instead of the plain-text
+form:
+
+```
+$ echo "Server=.;Database=app" | connstr get --format json - Database
+{"key":"Database","value":"app"}
+
+$ echo "Server=.;Database=app" | connstr keys --format json -
+{"keys":["Server","Database"]}
+
+$ echo "Server=.;=oops" | connstr validate --format json -
+{"errors":[{"message":"empty key before '='","line":1,"column":11}]}
+```
+
+On success `get` and `keys` print their JSON object to stdout;
+`validate` prints `{"status":"ok"}`. On failure - a missing key, a
+malformed string - the JSON error object goes to stderr instead of the
+plain-text message, and the process still exits non-zero.
+
 ## Errors point at the exact character
 
 Splitting on punctuation by hand tends to produce error messages like

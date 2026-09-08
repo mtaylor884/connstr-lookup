@@ -64,6 +64,38 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+impl ParseError {
+    pub fn position(&self) -> Position {
+        match self {
+            ParseError::EmptyKey(pos) => *pos,
+            ParseError::MissingEquals { position, .. } => *position,
+            ParseError::UnterminatedQuote { position, .. } => *position,
+            ParseError::TrailingCharacters { position, .. } => *position,
+        }
+    }
+
+    // The message text alone, without the "line X, column Y: " prefix that
+    // Display adds - callers that report position as separate structured
+    // fields (e.g. JSON output) don't want it repeated in the message.
+    pub fn message(&self) -> String {
+        match self {
+            ParseError::EmptyKey(_) => "empty key before '='".to_string(),
+            ParseError::MissingEquals { key, .. } => {
+                format!("entry '{}' has no '=' before the next ';'", key)
+            }
+            ParseError::UnterminatedQuote { quote, .. } => {
+                format!("value starting here is opened with {} but never closed", quote)
+            }
+            ParseError::TrailingCharacters { found, .. } => {
+                format!(
+                    "unexpected '{}' after closing quote, expected ';' or end of input",
+                    found
+                )
+            }
+        }
+    }
+}
+
 struct Scanner {
     chars: Vec<char>,
     idx: usize,
