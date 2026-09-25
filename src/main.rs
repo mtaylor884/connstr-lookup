@@ -13,6 +13,9 @@ enum Format {
     Json,
 }
 
+// Fixed-width so the output never hints at the real value's length.
+const MASK: &str = "********";
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     match run(&args) {
@@ -28,15 +31,22 @@ fn main() -> ExitCode {
     }
 }
 
-// Pulls "--format text|json" (or "--format=text|json") out of args,
-// wherever it appears, and returns it along with the remaining positional
-// arguments.
-fn extract_format(args: &[String]) -> Result<(Format, Vec<String>), String> {
+// Pulls "--format text|json" (or "--format=text|json") and the "--mask"
+// flag out of args, wherever they appear, and returns them along with the
+// remaining positional arguments.
+fn extract_options(args: &[String]) -> Result<(Format, bool, Vec<String>), String> {
     let mut format = Format::Text;
+    let mut mask = false;
     let mut rest = Vec::with_capacity(args.len());
     let mut i = 0;
     while i < args.len() {
         let arg = &args[i];
+        if arg == "--mask" {
+            mask = true;
+            i += 1;
+            continue;
+        }
+
         let value = if let Some(v) = arg.strip_prefix("--format=") {
             Some(v.to_string())
         } else if arg == "--format" {
@@ -63,11 +73,11 @@ fn extract_format(args: &[String]) -> Result<(Format, Vec<String>), String> {
         }
         i += 1;
     }
-    Ok((format, rest))
+    Ok((format, mask, rest))
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let (format, args) = extract_format(args)?;
+    let (format, mask, args) = extract_options(args)?;
     match args.first().map(String::as_str) {
         Some("get") => {
             let source = args
@@ -76,7 +86,7 @@ fn run(args: &[String]) -> Result<(), String> {
             let key = args
                 .get(2)
                 .ok_or_else(|| "usage: connstr get <FILE|-> <KEY>".to_string())?;
-            cmd_get(source, key, format)
+            cmd_get(source, key, format, mask)
         }
         Some("keys") => {
             let source = args
@@ -108,7 +118,8 @@ fn print_usage() {
          \x20\x20connstr validate <FILE|->    report every parse error found, not just the first\n\
          \n\
          FILE may be '-' to read the connection string from stdin.\n\
-         Add --format json to any command to get machine-readable output instead of plain text."
+         Add --format json to any command to get machine-readable output instead of plain text.\n\
+         Add --mask to 'get' to print ******** instead of the value when KEY looks like a password."
     );
 }
 
@@ -142,7 +153,7 @@ fn report_parse_error(source: &str, error: &parser::ParseError, format: Format) 
     String::new()
 }
 
-fn cmd_get(source: &str, key: &str, format: Format) -> Result<(), String> {
+fn cmd_get(source: &str, key: &str, format: Format, mask: bool) -> Result<(), String> {
     let input = read_source(source)?;
     let pairs = match parser::parse(&input) {
         Ok(pairs) => pairs,
@@ -152,12 +163,15 @@ fn cmd_get(source: &str, key: &str, format: Format) -> Result<(), String> {
     let target = aliases::canonical(key);
     match pairs.iter().find(|p| aliases::canonical(&p.key) == target) {
         Some(pair) => {
+            let masked = mask && target == "password";
+            let value: &str = if masked { MASK } else { pair.value.as_str() };
             match format {
-                Format::Text => println!("{}", pair.value),
+                Format::Text => println!("{}", value),
                 Format::Json => println!(
-                    "{{\"key\":{},\"value\":{}}}",
+                    "{{\"key\":{},\"value\":{},\"masked\":{}}}",
                     json::quoted(&pair.key),
-                    json::quoted(&pair.value)
+                    json::quoted(value),
+                    masked
                 ),
             }
             Ok(())

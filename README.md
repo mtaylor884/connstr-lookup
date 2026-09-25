@@ -106,6 +106,29 @@ On success `get` and `keys` print their JSON object to stdout;
 malformed string - the JSON error object goes to stderr instead of the
 plain-text message, and the process still exits non-zero.
 
+## Masking password values with --mask
+
+Add `--mask` to `get` to print `********` instead of the real value
+when the requested key is in the Password/Pwd group, so a connection
+string can be inspected (piped into a log, pasted into a terminal
+recording) without the credential ending up in it:
+
+```
+$ echo "Server=.;Password=hunter2" | connstr get --mask - Password
+********
+```
+
+`--mask` only changes output for password-like keys; asking for
+`Server` with `--mask` set still prints the real value. It has no
+effect on `keys` or `validate`, which never print values. The JSON
+form of `get` adds a `"masked"` field so a script can tell whether the
+value it received was redacted:
+
+```
+$ echo "Server=.;Password=hunter2" | connstr get --mask --format json - Password
+{"key":"Password","value":"********","masked":true}
+```
+
 ## Errors point at the exact character
 
 Splitting on punctuation by hand tends to produce error messages like
